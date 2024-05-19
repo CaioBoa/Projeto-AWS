@@ -1,0 +1,452 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Provisioning a scalable architecture with ALB, EC2 instances, Auto Scaling, and DynamoDB.
+
+Resources:
+  VPCcaio:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.0.0.0/24
+      EnableDnsSupport: true
+      EnableDnsHostnames : true
+
+  PublicSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPCcaio
+      MapPublicIpOnLaunch: true
+      CidrBlock: 10.0.0.0/28
+      AvailabilityZone: us-east-1a
+
+  PublicSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPCcaio
+      MapPublicIpOnLaunch: true
+      CidrBlock: 10.0.0.32/28
+      AvailabilityZone: us-east-1b
+
+  MyInternetGateway:
+    Type: AWS::EC2::InternetGateway
+
+  MyVPCGatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref VPCcaio
+      InternetGatewayId: !Ref MyInternetGateway
+
+  MyRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties: 
+      VpcId: !Ref VPCcaio
+
+  PublicRoute:
+    Type: AWS::EC2::Route
+    DependsOn: MyVPCGatewayAttachment
+    Properties:
+      RouteTableId: !Ref MyRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref MyInternetGateway
+
+  SubnetRouteTableAssociationOne:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnet1
+      RouteTableId: !Ref MyRouteTable
+
+  SubnetRouteTableAssociationTwo:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnet2
+      RouteTableId: !Ref MyRouteTable
+
+  MySecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security group for EC2 instances
+      VpcId: !Ref VPCcaio
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 6000
+          ToPort: 6000
+          CidrIp: 0.0.0.0/0
+
+  DynamoSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security group for Dynamo instances
+      VpcId: !Ref VPCcaio
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          SourceSecurityGroupId: !Ref MySecurityGroup
+
+  MyLaunchConfiguration:
+    Type: AWS::AutoScaling::LaunchConfiguration
+    Properties:
+      IamInstanceProfile: !Ref DynamoDBInstanceProfile
+      ImageId: ami-07caf09b362be10b8 
+      KeyName: caiochave
+      InstanceType: t2.micro
+      SecurityGroups:
+        - !Ref MySecurityGroup
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          sudo su
+          sudo yum update -y
+          sudo yum install -y python3-pip
+          sudo yum install -y nginx
+          pip install fastapi uvicorn gunicorn boto3 pydantic
+
+          mkdir /home/ec2-user/serv
+          cd /home/ec2-user/serv
+
+          cat <<EOF > app.py
+          from fastapi import FastAPI, Response, status
+          from fastapi.middleware.cors import CORSMiddleware
+          from fastapi.responses import HTMLResponse
+          from typing import List
+          from pydantic import BaseModel
+          import boto3
+
+          app = FastAPI()
+
+          class Item(BaseModel):
+            YourPrimaryKey: str
+            name: str
+
+          # Configuração do cliente DynamoDB
+          dynamodb = boto3.resource('dynamodb', region_name='us-east-1')
+
+          # Nome da tabela DynamoDB
+          table_name = 'TableCaio'
+
+          # Obtendo a referência para a tabela DynamoDB
+          table = dynamodb.Table(table_name)
+
+          origins = ["*"]
+          app.add_middleware(
+          CORSMiddleware,
+          allow_origins=origins,
+          allow_credentials=True,
+          allow_methods=["*"],
+          allow_headers=["*"],
+          )
+
+          @app.get("/")
+          async def health_check():
+            return Response(status_code=200)
+
+          @app.get("/test", response_class=HTMLResponse)
+          async def read_main():
+              html_content = """
+              <html>
+                  <head>
+                      <title>Exemplo de Página</title>
+                  </head>
+                  <body>
+                      <h1>Hello, FastAPI!</h1>
+                  </body>
+              </html>
+              """
+              return HTMLResponse(content=html_content)
+
+          @app.get("/get_item/{item_id}")
+          async def get_item(item_id: str):
+            response = table.get_item(Key={'YourPrimaryKey': item_id})
+            item = response.get('Item')
+            if item:
+                return item
+            else:
+                return Response(status_code=status.HTTP_404_NOT_FOUND)
+
+          @app.get("/get_all_items", response_model=List[Item])
+          async def get_all_items():
+              try:
+                  # Realiza uma varredura completa na tabela
+                  response = table.scan()
+                  items = response.get('Items', [])
+                  return items
+              except Exception as e:
+                  raise HTTPException(status_code=500, detail=str(e))
+
+          @app.post("/create_item")
+          async def create_item(item: Item):
+            item_to_create = {'YourPrimaryKey': item.YourPrimaryKey, 'name': item.name}
+            try:
+                response = table.put_item(Item=item_to_create)
+                return "Item created successfully"
+            except Exception as e:
+                raise HTTPException(status_code=400, detail=f"An error occurred: {str(e)}")
+
+          EOF
+
+          cat <<EOF > main.py
+              import uvicorn
+
+              if __name__ == "__main__":
+                uvicorn.run("app:app", host="0.0.0.0", port=6000)
+
+          EOF
+
+          cat <<EOF > /etc/systemd/system/gunicorn.socket
+          [Unit]
+          Description=gunicorn socket
+
+          [Socket]
+          ListenStream=/run/gunicorn.sock
+
+          [Install]
+          WantedBy=sockets.target
+
+          EOF
+
+          cat <<EOF > /etc/systemd/system/gunicorn.service
+
+          [Unit]
+          Description=gunicorn daemon
+          Requires=gunicorn.socket
+          After=network.target
+
+          [Service]
+          User=ec2-user
+          WorkingDirectory=/home/ec2-user/serv
+          ExecStart=gunicorn \
+                    --access-logfile - \
+                    --workers 5 \
+                    --bind unix:/run/gunicorn.sock \
+                    --worker-class uvicorn.workers.UvicornWorker \
+                    app:app
+
+          [Install]
+          WantedBy=multi-user.target
+
+          EOF
+
+          sudo systemctl start gunicorn.socket
+          sudo systemctl enable gunicorn.socket
+
+          mkdir /etc/nginx/sites-available
+          cat <<EOF > /etc/nginx/sites-available/default
+
+          server {
+                  listen 6000 default_server;
+                  listen [::]:6000 default_server;
+
+                  root /var/www/html;
+
+                  index index.html index.htm index.nginx-debian.html;
+
+                  server_name _;
+
+                  location / {
+                          proxy_pass http://unix:/run/gunicorn.sock;
+                  }
+          }
+
+          EOF
+
+          cat <<EOF > /etc/nginx/nginx.conf
+
+          user nginx;
+          worker_processes auto;
+          error_log /var/log/nginx/error.log notice;
+          pid /run/nginx.pid;
+
+          events {
+              worker_connections 1024;
+          }
+
+          http {
+              log_format  main  '$remote_addr - $remote_user [$time_local] "$request" '
+                                '$status $body_bytes_sent "$http_referer" '
+                                '"$http_user_agent" "$http_x_forwarded_for"';
+
+              access_log  /var/log/nginx/access.log  main;
+
+              sendfile            on;
+              tcp_nopush          on;
+              keepalive_timeout   65;
+              types_hash_max_size 4096;
+              
+              include /etc/nginx/sites-available/*;
+              include             /etc/nginx/mime.types;
+              default_type        application/octet-stream;
+              include /etc/nginx/conf.d/*.conf;
+          
+          }
+
+          EOF
+
+          sudo systemctl daemon-reload
+          sudo systemctl restart gunicorn
+          sudo systemctl restart nginx
+
+  MyAutoScalingGroup:
+    Type: AWS::AutoScaling::AutoScalingGroup
+    Properties:
+      LaunchConfigurationName: !Ref MyLaunchConfiguration
+      MinSize: 1
+      MaxSize: 3
+      TargetGroupARNs:
+        - Ref: MyTargetGroup
+      DesiredCapacity: 2
+      VPCZoneIdentifier: 
+        - !Ref PublicSubnet1
+        - !Ref PublicSubnet2
+      TargetGroupARNs:
+        - !Ref MyTargetGroup
+
+  MyLoadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Subnets: 
+        - !Ref PublicSubnet1
+        - !Ref PublicSubnet2
+      SecurityGroups: [!Ref MySecurityGroup]
+      Scheme: internet-facing
+      LoadBalancerAttributes:
+        - Key: idle_timeout.timeout_seconds
+          Value: "90"
+
+  MyTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      VpcId: !Ref VPCcaio
+      Port: 6000
+      Protocol: HTTP
+      HealthCheckEnabled: true
+      HealthCheckProtocol: HTTP
+      HealthCheckPort: 6000
+      HealthCheckPath: "/"
+      HealthCheckIntervalSeconds: 30
+      HealthCheckTimeoutSeconds: 15
+      HealthyThresholdCount: 2
+      UnhealthyThresholdCount: 4
+      TargetType: instance
+
+  MyALBListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref MyTargetGroup
+      LoadBalancerArn: !Ref MyLoadBalancer
+      Port: 80
+      Protocol: HTTP
+
+  ScaleUpPolicy:
+    Type: AWS::AutoScaling::ScalingPolicy
+    Properties:
+      AutoScalingGroupName: !Ref MyAutoScalingGroup
+      AdjustmentType: ChangeInCapacity
+      ScalingAdjustment: 1
+      Cooldown: '30'
+
+  ScaleDownPolicy:
+    Type: AWS::AutoScaling::ScalingPolicy
+    Properties:
+      AutoScalingGroupName: !Ref MyAutoScalingGroup
+      AdjustmentType: ChangeInCapacity
+      ScalingAdjustment: -1
+      Cooldown: '30'
+
+  HighCPUAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmDescription: "Alarm if CPU > 3%"
+      MetricName: CPUUtilization
+      Namespace: AWS/EC2
+      Statistic: Average
+      Period: '60'
+      EvaluationPeriods: '1'
+      Threshold: '3'
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      AlarmActions:
+        - !Ref ScaleUpPolicy
+      Dimensions:
+        - Name: AutoScalingGroupName
+          Value: !Ref MyAutoScalingGroup
+
+  LowCPUAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmDescription: "Alarm if CPU < 1%"
+      MetricName: CPUUtilization
+      Namespace: AWS/EC2
+      Statistic: Average
+      Period: '60'
+      EvaluationPeriods: '1'
+      Threshold: '1'
+      ComparisonOperator: LessThanOrEqualToThreshold
+      AlarmActions:
+        - !Ref ScaleDownPolicy
+      Dimensions:
+        - Name: AutoScalingGroupName
+          Value: !Ref MyAutoScalingGroup
+
+  DynamoDBRole:
+      Type: AWS::IAM::Role
+      Properties:
+        AssumeRolePolicyDocument:
+          Version: "2012-10-17"
+          Statement:
+            - Effect: "Allow"
+              Principal:
+                Service: "ec2.amazonaws.com"
+              Action: "sts:AssumeRole"
+        Policies:
+          - PolicyName: "DynamoDBAccess"
+            PolicyDocument:
+              Version: "2012-10-17"
+              Statement:
+                - Effect: "Allow"
+                  Action: "dynamodb:*"
+                  Resource: "*"
+
+
+  DynamoDBInstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Roles:
+        - Ref: DynamoDBRole
+
+  DynamoDBTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: TableCaio
+      AttributeDefinitions:
+        - AttributeName: "YourPrimaryKey"
+          AttributeType: S
+      KeySchema:
+        - AttributeName: "YourPrimaryKey"
+          KeyType: HASH
+      BillingMode: PAY_PER_REQUEST
+
+  DynamoDBVpcEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcId: !Ref VPCcaio
+      ServiceName: !Sub "com.amazonaws.${AWS::Region}.dynamodb"
+      VpcEndpointType: "Interface"
+      SecurityGroupIds:
+        - !Ref DynamoSecurityGroup
+      SubnetIds:
+        - !Ref PublicSubnet1
+        - !Ref PublicSubnet2
+
+Outputs:
+  LoadBalancerDNSName:
+    Description: "DNS Name of the Load Balancer"
+    Value: !GetAtt MyLoadBalancer.DNSName
+    Export:
+      Name: !Sub "${AWS::StackName}-LoadBalancerDNSName"
