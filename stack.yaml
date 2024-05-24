@@ -1,5 +1,5 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: Provisioning a scalable architecture with ALB, EC2 instances, Auto Scaling, and DynamoDB.
+Description: Arquitetura escalável com FastAPI e DynamoDB
 
 Resources:
   VPCcaio:
@@ -22,7 +22,7 @@ Resources:
     Properties:
       VpcId: !Ref VPCcaio
       MapPublicIpOnLaunch: true
-      CidrBlock: 10.0.0.32/28
+      CidrBlock: 10.0.0.16/28
       AvailabilityZone: us-east-1b
 
   MyInternetGateway:
@@ -316,7 +316,7 @@ Resources:
       Scheme: internet-facing
       LoadBalancerAttributes:
         - Key: idle_timeout.timeout_seconds
-          Value: "90"
+          Value: "30"
 
   MyTargetGroup:
     Type: AWS::ElasticLoadBalancingV2::TargetGroup
@@ -360,16 +360,16 @@ Resources:
       ScalingAdjustment: -1
       Cooldown: '30'
 
-  HighCPUAlarm:
+  AlarmHigh:
     Type: AWS::CloudWatch::Alarm
     Properties:
-      AlarmDescription: "Alarm if CPU > 3%"
+      AlarmDescription: "CPU >= 10%"
       MetricName: CPUUtilization
       Namespace: AWS/EC2
       Statistic: Average
       Period: '60'
       EvaluationPeriods: '1'
-      Threshold: '3'
+      Threshold: '10'
       ComparisonOperator: GreaterThanOrEqualToThreshold
       AlarmActions:
         - !Ref ScaleUpPolicy
@@ -377,16 +377,16 @@ Resources:
         - Name: AutoScalingGroupName
           Value: !Ref MyAutoScalingGroup
 
-  LowCPUAlarm:
+  AlarmLow:
     Type: AWS::CloudWatch::Alarm
     Properties:
-      AlarmDescription: "Alarm if CPU < 1%"
+      AlarmDescription: "CPU <= 2%"
       MetricName: CPUUtilization
       Namespace: AWS/EC2
       Statistic: Average
       Period: '60'
       EvaluationPeriods: '1'
-      Threshold: '1'
+      Threshold: '2'
       ComparisonOperator: LessThanOrEqualToThreshold
       AlarmActions:
         - !Ref ScaleDownPolicy
@@ -431,6 +431,7 @@ Resources:
         - AttributeName: "YourPrimaryKey"
           KeyType: HASH
       BillingMode: PAY_PER_REQUEST
+      TableClass: STANDARD_INFREQUENT_ACCESS
 
   DynamoDBVpcEndpoint:
     Type: AWS::EC2::VPCEndpoint
