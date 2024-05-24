@@ -157,6 +157,11 @@ Resources:
                   </head>
                   <body>
                       <h1>Hello, FastAPI!</h1>
+                      <img src="https://e7.pngegg.com/pngimages/275/69/png-clipart-british-shorthair-scottish-fold-american-shorthair-kitten-fat-cat-ferocious-mammal-cat-like-mammal.png" alt="Cute Kitten">
+                      <img src="https://e7.pngegg.com/pngimages/275/69/png-clipart-british-shorthair-scottish-fold-american-shorthair-kitten-fat-cat-ferocious-mammal-cat-like-mammal.png" alt="Cute Kitten">
+                      <img src="https://e7.pngegg.com/pngimages/275/69/png-clipart-british-shorthair-scottish-fold-american-shorthair-kitten-fat-cat-ferocious-mammal-cat-like-mammal.png" alt="Cute Kitten">
+                      <img src="https://e7.pngegg.com/pngimages/275/69/png-clipart-british-shorthair-scottish-fold-american-shorthair-kitten-fat-cat-ferocious-mammal-cat-like-mammal.png" alt="Cute Kitten">
+                      <img src="https://e7.pngegg.com/pngimages/275/69/png-clipart-british-shorthair-scottish-fold-american-shorthair-kitten-fat-cat-ferocious-mammal-cat-like-mammal.png" alt="Cute Kitten">
                   </body>
               </html>
               """
