@@ -151,10 +151,10 @@ A Public Route complementa a Route Table, criando uma rota que define com quais 
 
 O Security Group é um firewall virtual que controla o tráfego de entrada e saída das instâncias, permitindo ou bloqueando conexões.
 
-Na infraestrutura gerada foram criados dois Security Groups, um para a instância EC2 e outro para o Dynamo DB, um permitindo acesso as portas 80, 6000 e 22 das instâncias EC2, e outro possibilitando apenas acessos na porta 443 do Dynamo DB por recursos dentro do primeiro security group.
+Na infraestrutura gerada foram criados dois Security Groups, um para a instância EC2 e outro para o Dynamo DB, um permitindo acesso as portas 80 e 6000 das instâncias EC2, e outro possibilitando apenas acessos na porta 443 do Dynamo DB por recursos dentro do primeiro security group.
 
 - **EC2 Security Group Propriedades**
-    - `SecurityGroupIngress` permite tráfego de entrada nas portas 80, 6000 e 22.
+    - `SecurityGroupIngress` permite tráfego de entrada nas portas 80 e 6000.
     - `CidrIp` permite que qualquer IP externo acesse as portas especificadas.
 
 - **DynamoDB Security Group Propriedades**
