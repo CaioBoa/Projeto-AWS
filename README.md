@@ -14,6 +14,8 @@
 
 Este relatório abrange a documentação técnica de um projeto que implementa uma arquitetura escalável na AWS utilizando FastAPI para servir uma aplicação web e Locust para realização de testes de carga. O projeto envolve o uso de serviços como Amazon EC2, Auto Scaling Groups, Elastic Load Balancing (ELB), e Amazon DynamoDB.
 
+![Diagrama](img/diagram.png)
+
 ## Operacionalização
 
 ### Pré Requisitos: AWS CLI e Locust
@@ -86,7 +88,7 @@ curl -X POST "<DNS-NAME>/create_item" -H "Content-Type: application/json" -d "{"
 Para utilização do teste de carga basta utilizar o seguinte comando no terminal do diretório do projeto:
 
 ```bash
-locust --host <DNS-NAME>
+locust --host http://<DNS-NAME>
 ```
 
 O DNS Name também pode ser inserido dentro da interface gráfica do Locust caso seja mais conveniente.
@@ -283,8 +285,9 @@ Considerando a análise do billing, estimando que os projetos dos dois alunos, p
 Após a análise do projeto, considerando um uso de 200 requisições por hora e um banco de dados capaz de armazenar cerca de 10000 itens com cerca de 50 bytes cada e todas as demais propriedades seguindo o modelo as quais seria criadas utilizando o arquivo .yaml do projeto, o custo estimado do projeto resultou em 85,49 US$ por mês.
 
 Apesar de tal valor ser consideravelmente maior que o custo real, existem fatores que argumentam a favor da diferença, como:
-    - Carga de 200 requisições por hora, que é expressivamente maior que a carga no qual o projeto vem sendo testado.
-    - Armazenamento de 10000 itens, que é um valor muito maior que o armazenamento atual do banco de dados, contando com no máximo 10 items.
+    
+- Carga de 200 requisições por hora, que é expressivamente maior que a carga no qual o projeto vem sendo testado.
+- Armazenamento de 10000 itens, que é um valor muito maior que o armazenamento atual do banco de dados, contando com no máximo 10 items.
 
 A análise detalhada do custo pode ser visualizada no seguinte [LINK](https://calculator.aws/#/estimate?id=d2052c76fe3048c8f407070ecefa805704c1bdc3) ou no pdf [Estimativa de Custos](EstimativaDeCustos.pdf) encontrado no diretório do projeto.
 

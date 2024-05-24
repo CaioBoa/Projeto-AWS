@@ -70,10 +70,6 @@ Resources:
           ToPort: 80
           CidrIp: 0.0.0.0/0
         - IpProtocol: tcp
-          FromPort: 22
-          ToPort: 22
-          CidrIp: 0.0.0.0/0
-        - IpProtocol: tcp
           FromPort: 6000
           ToPort: 6000
           CidrIp: 0.0.0.0/0
@@ -94,7 +90,6 @@ Resources:
     Properties:
       IamInstanceProfile: !Ref DynamoDBInstanceProfile
       ImageId: ami-07caf09b362be10b8 
-      KeyName: caiochave
       InstanceType: t2.micro
       SecurityGroups:
         - !Ref MySecurityGroup
@@ -297,8 +292,6 @@ Resources:
       LaunchConfigurationName: !Ref MyLaunchConfiguration
       MinSize: 1
       MaxSize: 3
-      TargetGroupARNs:
-        - Ref: MyTargetGroup
       DesiredCapacity: 2
       VPCZoneIdentifier: 
         - !Ref PublicSubnet1
